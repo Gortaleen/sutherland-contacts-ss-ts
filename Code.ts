@@ -3,8 +3,12 @@
  * https://github.com/google/clasp/blob/master/docs/typescript.md
  * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-0.html#non-null-assertion-operator
  * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing
+ * https://www.typescriptlang.org/tsconfig#strict
+ * https://www.typescriptlang.org/tsconfig#alwaysStrict
+ * https://typescript-eslint.io/getting-started
  */
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function updateContactsSheetRun() {
   UpdateContactList.main();
 }
@@ -22,7 +26,7 @@ const UpdateContactList = (function () {
     const numColumns = 7;
 
     contactsSheet.getRange(firstRow, firstColumn, numRows, numColumns)
-      .setValues(rowData as any);
+      .setValues(rowData);
   }
 
   function getContactsList(resourceName: string, resourceType: string) {

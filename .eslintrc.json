@@ -1,0 +1,19 @@
+{
+  "env": {
+    "browser": true
+  },
+  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "root": true,
+  "parserOptions": {
+    "ecmaVersion": 5
+  },
+  "ignorePatterns": ["**/dist/**"],
+  "rules": {
+    "indent": ["error", 2],
+    "linebreak-style": ["error", "unix"],
+    "quotes": ["error", "double"],
+    "semi": ["error", "always"]
+  }
+}
