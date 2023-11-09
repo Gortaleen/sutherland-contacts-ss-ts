@@ -18,7 +18,7 @@ const UpdateContactList = (function () {
 
   function updateContactsSheet(
     contactsSheet: GoogleAppsScript.Spreadsheet.Sheet,
-    rowData: (string | undefined)[][] = [],
+    rowData: (string | undefined)[][],
     firstRow: number
   ) {
     const firstColumn = 1;
@@ -27,6 +27,8 @@ const UpdateContactList = (function () {
 
     contactsSheet.getRange(firstRow, firstColumn, numRows, numColumns)
       .setValues(rowData);
+
+    return firstRow + numRows + 2;
   }
 
   function getContactsList(resourceName: string, resourceType: string) {
@@ -105,6 +107,8 @@ const UpdateContactList = (function () {
         }
       });
 
+    ssData.sort();
+
     return ssData;
   }
 
@@ -130,25 +134,18 @@ const UpdateContactList = (function () {
     }
 
     ssData = getContactsList(resourceNameObj.active, "Active");
-    ssData.sort();
-    updateContactsSheet(contactsListSheet, ssData, rowCount);
+    rowCount = updateContactsSheet(contactsListSheet, ssData, rowCount);
 
-    rowCount = rowCount + ssData.length + 2;
     ssData = getContactsList(resourceNameObj.guest, "Guest");
-    ssData.sort();
-    updateContactsSheet(contactsListSheet, ssData, rowCount);
+    rowCount = updateContactsSheet(contactsListSheet, ssData, rowCount);
 
-    rowCount = rowCount + ssData.length + 2;
     ssData = getContactsList(resourceNameObj.student, "Student");
-    ssData.sort();
-    updateContactsSheet(contactsListSheet, ssData, rowCount);
+    rowCount = updateContactsSheet(contactsListSheet, ssData, rowCount);
 
-    rowCount = rowCount + ssData.length + 2;
     ssData = getContactsList(resourceNameObj.inactive, "Inactive");
-    ssData.sort();
     updateContactsSheet(contactsListSheet, ssData, rowCount);
 
-    activeSpreadsheet.rename(`Sutherland Contacts ${dt.getFullYear()} (TEST)`);
+    activeSpreadsheet.rename(`Sutherland Contacts ${dt.getFullYear()}`);
   }
 
   return { main };
