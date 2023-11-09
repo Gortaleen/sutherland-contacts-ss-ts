@@ -115,19 +115,22 @@ const UpdateContactList = (function () {
   function main() {
     const scriptProperties = PropertiesService.getScriptProperties();
     const contactsSpreadsheetID = scriptProperties.getProperty("CONTACTS_SPREADSHEET_ID");
-    const activeSpreadsheet = SpreadsheetApp.openById(contactsSpreadsheetID!);
+    const activeSpreadsheet = ((contactsSpreadsheetID)
+      ? SpreadsheetApp.openById(contactsSpreadsheetID)
+      : SpreadsheetApp.getActive());
     const contactsListSheet = activeSpreadsheet.getSheetByName("Contact List")!;
     // https://developers.google.com/people/api/rest/v1/contactGroups/list
     const resourceNameObj = {
-      active: scriptProperties.getProperty("RESOURCE_NAME_ACTIVE")!,
-      guest: scriptProperties.getProperty("RESOURCE_NAME_GUEST")!,
-      inactive: scriptProperties.getProperty("RESOURCE_NAME_INACTIVE")!,
-      student: scriptProperties.getProperty("RESOURCE_NAME_STUDENT")!
+      active: scriptProperties?.getProperty("RESOURCE_NAME_ACTIVE") || "contactGroups/1cf9f5348e22c8b7",
+      guest: scriptProperties?.getProperty("RESOURCE_NAME_GUEST") || "contactGroups/3c82995f899da957",
+      inactive: scriptProperties?.getProperty("RESOURCE_NAME_INACTIVE") || "contactGroups/3a3fa8fc0d6be183",
+      student: scriptProperties?.getProperty("RESOURCE_NAME_STUDENT") || "contactGroups/5d7c7a9d8e0c906d"
     };
     let ssData: (string | undefined)[][] = [];
     let rowCount = 2; // row 1 is the header
     const dt = new Date();
 
+    // todo:  restore sheet if getContactsList fails?
     if (contactsListSheet.getLastRow() > 1) {
       contactsListSheet.getRange(2, 1, (contactsListSheet.getLastRow() - 1), 7)
         .clearContent();
