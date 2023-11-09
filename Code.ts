@@ -25,10 +25,15 @@ const UpdateContactList = (function () {
     const numRows = rowData.length;
     const numColumns = 7;
 
-    contactsSheet.getRange(firstRow, firstColumn, numRows, numColumns)
-      .setValues(rowData);
+    if (rowData.length > 0) {
 
-    return firstRow + numRows + 2;
+      contactsSheet.getRange(firstRow, firstColumn, numRows, numColumns)
+        .setValues(rowData);
+
+      return firstRow + numRows + 2;
+    }
+
+    return firstRow;
   }
 
   function getContactsList(resourceName: string, resourceType: string) {
@@ -126,29 +131,34 @@ const UpdateContactList = (function () {
       inactive: scriptProperties?.getProperty("RESOURCE_NAME_INACTIVE") || "contactGroups/3a3fa8fc0d6be183",
       student: scriptProperties?.getProperty("RESOURCE_NAME_STUDENT") || "contactGroups/5d7c7a9d8e0c906d"
     };
-    let ssData: (string | undefined)[][] = [];
+    let ssActiveData: (string | undefined)[][] = [];
+    let ssGuestData: (string | undefined)[][] = [];
+    let ssStudentData: (string | undefined)[][] = [];
+    let ssInactiveData: (string | undefined)[][] = [];
     let rowCount = 2; // row 1 is the header
     const dt = new Date();
 
-    // todo:  restore sheet if getContactsList fails?
-    if (contactsListSheet.getLastRow() > 1) {
-      contactsListSheet.getRange(2, 1, (contactsListSheet.getLastRow() - 1), 7)
-        .clearContent();
+    ssActiveData = getContactsList(resourceNameObj.active, "Active");
+    ssGuestData = getContactsList(resourceNameObj.guest, "Guest");
+    ssStudentData = getContactsList(resourceNameObj.student, "Student");
+    ssInactiveData = getContactsList(resourceNameObj.inactive, "Inactive");
+
+    if (ssActiveData.length > 0 || ssGuestData.length > 0 || ssStudentData.length > 0 || ssInactiveData.length > 0) {
+
+      if (contactsListSheet.getLastRow() > 1) {
+        contactsListSheet.getRange(2, 1, (contactsListSheet.getLastRow() - 1), 7)
+          .clearContent();
+      }
+
+      rowCount = updateContactsSheet(contactsListSheet, ssActiveData, rowCount);
+      rowCount = updateContactsSheet(contactsListSheet, ssGuestData, rowCount);
+      rowCount = updateContactsSheet(contactsListSheet, ssStudentData, rowCount);
+      updateContactsSheet(contactsListSheet, ssInactiveData, rowCount);
+      activeSpreadsheet.rename(`Sutherland Contacts ${dt.getFullYear()}`);
+
     }
 
-    ssData = getContactsList(resourceNameObj.active, "Active");
-    rowCount = updateContactsSheet(contactsListSheet, ssData, rowCount);
-
-    ssData = getContactsList(resourceNameObj.guest, "Guest");
-    rowCount = updateContactsSheet(contactsListSheet, ssData, rowCount);
-
-    ssData = getContactsList(resourceNameObj.student, "Student");
-    rowCount = updateContactsSheet(contactsListSheet, ssData, rowCount);
-
-    ssData = getContactsList(resourceNameObj.inactive, "Inactive");
-    updateContactsSheet(contactsListSheet, ssData, rowCount);
-
-    activeSpreadsheet.rename(`Sutherland Contacts ${dt.getFullYear()}`);
+    return;
   }
 
   return { main };
