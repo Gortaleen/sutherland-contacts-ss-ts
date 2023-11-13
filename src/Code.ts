@@ -14,25 +14,60 @@ function updateContactsSheetRun() {
   UpdateContactList.main();
 }
 
+interface ContactGroup extends GoogleAppsScript.People.Schema.ContactGroup {}
+
 const UpdateContactList = (function () {
   // https://medium.com/@Rahulx1/revealing-module-pattern-tips-e3442d4e352
 
+  function contactGroupChanges(
+    ssLastUpdated: GoogleAppsScript.Base.Date,
+    ...contactsLastUpdated: Array<string | undefined>
+  ): boolean {
+    return contactsLastUpdated.some(function (contactLastUpdatedStr) {
+      const contactLastUpdated = contactLastUpdatedStr
+        ? new Date(contactLastUpdatedStr)
+        : undefined;
+      return contactLastUpdated
+        ? contactLastUpdated > ssLastUpdated
+        : undefined;
+    });
+  }
+
+  function getContactGroup(
+    resourceName: string | null,
+    quotaUser: string
+  ): ContactGroup | undefined {
+    // https://developers.google.com/people/api/rest/v1/contactGroups/get
+    const maxMembers = 1000; // ? this value is arbitrary
+
+    if (resourceName) {
+      return People.ContactGroups?.get(resourceName, { maxMembers, quotaUser });
+    }
+  }
+
   function checkUpdateNeeded(
-    resourceNameObj: { "active": string; "guest": string; "student": string; "inactive": string; },
+    resourceNameObj: BandResourceNames,
     ssLastUpdated: GoogleAppsScript.Base.Date,
     quotaUser: string
   ): boolean {
     return Object.keys(resourceNameObj).some(function (key: string) {
-      const resourceName = (
-        (key === "active") ? resourceNameObj.active
-          : (key === "guest") ? resourceNameObj.guest
-            : (key === "student") ? resourceNameObj.student
-              : (key === "inactive") ? resourceNameObj.inactive
-                : "");
+      const resourceName =
+        key === "active"
+          ? resourceNameObj.active
+          : key === "guest"
+          ? resourceNameObj.guest
+          : key === "student"
+          ? resourceNameObj.student
+          : key === "inactive"
+          ? resourceNameObj.inactive
+          : "";
       const maxMembers = People.ContactGroups!.get(resourceName, {
         quotaUser,
       }).memberCount;
-      const contactGroup = People.ContactGroups?.get(resourceName, { maxMembers, quotaUser });
+      const contactGroup = People.ContactGroups?.get(resourceName, {
+        maxMembers,
+        quotaUser,
+      });
       const resourceNames = contactGroup?.memberResourceNames;
       const contactsLastUpdated = new Date(
         contactGroup?.metadata?.updateTime || 0
@@ -139,11 +174,11 @@ const UpdateContactList = (function () {
             person.addresses
               ? person.addresses[0]
                 ? [
-                  person.addresses[0].streetAddress,
-                  person.addresses[0].city,
-                  person.addresses[0].region,
-                  person.addresses[0].postalCode,
-                ].join(", ")
+                    person.addresses[0].streetAddress,
+                    person.addresses[0].city,
+                    person.addresses[0].region,
+                    person.addresses[0].postalCode,
+                  ].join(", ")
                 : ""
               : "", // Home Address
             person.emailAddresses
@@ -182,62 +217,84 @@ const UpdateContactList = (function () {
     const contactsListSheet = activeSpreadsheet.getSheetByName("Contact List")!;
     const addToContactsSheet = addToSheet(contactsListSheet);
     // https://developers.google.com/people/api/rest/v1/contactGroups/list
-    const resourceNameObj = {
-      active:
-        scriptProperties?.getProperty("RESOURCE_NAME_ACTIVE") ||
-        "contactGroups/1cf9f5348e22c8b7",
-      guest:
-        scriptProperties?.getProperty("RESOURCE_NAME_GUEST") ||
-        "contactGroups/3c82995f899da957",
-      inactive:
-        scriptProperties?.getProperty("RESOURCE_NAME_INACTIVE") ||
-        "contactGroups/3a3fa8fc0d6be183",
-      student:
-        scriptProperties?.getProperty("RESOURCE_NAME_STUDENT") ||
-        "contactGroups/5d7c7a9d8e0c906d",
-    };
-    const updateNeeded = checkUpdateNeeded(resourceNameObj, ssLastUpdated, quotaUser);
-    let ssActiveData: Array<Array<string | undefined>> = [];
-    let ssGuestData: Array<Array<string | undefined>> = [];
-    let ssStudentData: Array<Array<string | undefined>> = [];
-    let ssInactiveData: Array<Array<string | undefined>> = [];
-    let rowCount = 2; // row 1 is the header
-    const dt = new Date();
+    const activeContactGroup = getContactGroup(
+      scriptProperties.getProperty("RESOURCE_NAME_ACTIVE"),
+      quotaUser
+    );
+    const guestContactGroup = getContactGroup(
+      scriptProperties?.getProperty("RESOURCE_NAME_GUEST"),
+      quotaUser
+    );
+    const inactiveContactGroup = getContactGroup(
+      scriptProperties?.getProperty("RESOURCE_NAME_INACTIVE"),
+      quotaUser
+    );
+    const studentContactGroup = getContactGroup(
+      scriptProperties?.getProperty("RESOURCE_NAME_STUDENT"),
+      quotaUser
+    );
 
-    if (updateNeeded) {
-      ssActiveData = getContactsList(quotaUser, resourceNameObj.active, "Active");
-      ssGuestData = getContactsList(quotaUser, resourceNameObj.guest, "Guest");
-      ssStudentData = getContactsList(
-        quotaUser,
-        resourceNameObj.student,
-        "Student"
-      );
-      ssInactiveData = getContactsList(
-        quotaUser,
-        resourceNameObj.inactive,
-        "Inactive"
-      );
-
-      if (
-        ssActiveData.length > 0 ||
-        ssGuestData.length > 0 ||
-        ssStudentData.length > 0 ||
-        ssInactiveData.length > 0
-      ) {
-
-        if (contactsListSheet.getLastRow() > 1) {
-          contactsListSheet
-            .getRange(2, 1, contactsListSheet.getLastRow() - 1, 7)
-            .clearContent();
-        }
-
-        rowCount = addToContactsSheet(ssActiveData, rowCount);
-        rowCount = addToContactsSheet(ssGuestData, rowCount);
-        rowCount = addToContactsSheet(ssStudentData, rowCount);
-        addToContactsSheet(ssInactiveData, rowCount);
-        activeSpreadsheet.rename(`Sutherland Contacts ${dt.getFullYear()}`);
-      }
+    if (
+      contactGroupChanges(
+        ssLastUpdated,
+        activeContactGroup?.metadata?.updateTime,
+        guestContactGroup?.metadata?.updateTime,
+        inactiveContactGroup?.metadata?.updateTime,
+        studentContactGroup?.metadata?.updateTime
+      )
+    ) {
+      // update sheet
     }
+
+    // const updateNeeded = checkUpdateNeeded(
+    //   resourceNameObj,
+    //   ssLastUpdated,
+    //   quotaUser
+    // );
+    // let ssActiveData: Array<Array<string | undefined>> = [];
+    // let ssGuestData: Array<Array<string | undefined>> = [];
+    // let ssStudentData: Array<Array<string | undefined>> = [];
+    // let ssInactiveData: Array<Array<string | undefined>> = [];
+    // let rowCount = 2; // row 1 is the header
+    // const dt = new Date();
+
+    // if (updateNeeded) {
+    //   ssActiveData = getContactsList(
+    //     quotaUser,
+    //     resourceNameObj.active,
+    //     "Active"
+    //   );
+    //   ssGuestData = getContactsList(quotaUser, resourceNameObj.guest, "Guest");
+    //   ssStudentData = getContactsList(
+    //     quotaUser,
+    //     resourceNameObj.student,
+    //     "Student"
+    //   );
+    //   ssInactiveData = getContactsList(
+    //     quotaUser,
+    //     resourceNameObj.inactive,
+    //     "Inactive"
+    //   );
+
+    //   if (
+    //     ssActiveData.length > 0 ||
+    //     ssGuestData.length > 0 ||
+    //     ssStudentData.length > 0 ||
+    //     ssInactiveData.length > 0
+    //   ) {
+    //     if (contactsListSheet.getLastRow() > 1) {
+    //       contactsListSheet
+    //         .getRange(2, 1, contactsListSheet.getLastRow() - 1, 7)
+    //         .clearContent();
+    //     }
+
+    //     rowCount = addToContactsSheet(ssActiveData, rowCount);
+    //     rowCount = addToContactsSheet(ssGuestData, rowCount);
+    //     rowCount = addToContactsSheet(ssStudentData, rowCount);
+    //     addToContactsSheet(ssInactiveData, rowCount);
+    //     activeSpreadsheet.rename(`Sutherland Contacts ${dt.getFullYear()}`);
+    //   }
+    // }
 
     return;
   }

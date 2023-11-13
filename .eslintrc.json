@@ -13,10 +13,5 @@
   "parserOptions": {
     "ecmaVersion": 5
   },
-  "ignorePatterns": ["**/dist/**"],
-  "rules": {
-    "indent": ["error", 2],
-    "quotes": ["error", "double"],
-    "semi": ["error", "always"]
-  }
+  "ignorePatterns": ["**/dist/**"]
 }
