@@ -15,85 +15,109 @@ function updateContactsSheetRun() {
 }
 
 interface ContactGroup extends GoogleAppsScript.People.Schema.ContactGroup {}
+interface ContactGroupResponse
+  extends GoogleAppsScript.People.Schema.ContactGroupResponse {}
+interface Person extends GoogleAppsScript.People.Schema.Person {}
+interface PersonResponse
+  extends GoogleAppsScript.People.Schema.PersonResponse {}
 
 const UpdateContactList = (function () {
   // https://medium.com/@Rahulx1/revealing-module-pattern-tips-e3442d4e352
 
-  function contactGroupChanges(
+  function personnelChanges(
     ssLastUpdated: GoogleAppsScript.Base.Date,
-    ...contactsLastUpdated: Array<string | undefined>
+    ...peopleResponses: Array<Array<PersonResponse> | undefined>
   ): boolean {
-    return contactsLastUpdated.some(function (contactLastUpdatedStr) {
-      const contactLastUpdated = contactLastUpdatedStr
-        ? new Date(contactLastUpdatedStr)
-        : undefined;
-      return contactLastUpdated
-        ? contactLastUpdated > ssLastUpdated
-        : undefined;
+    return peopleResponses.some(function (peopleResponse) {
+      return peopleResponse?.some(function (personResponse) {
+        let personLastUpdatedStr;
+        let personLastUpdated;
+        if (personResponse.person?.metadata?.sources) {
+          personLastUpdatedStr =
+            personResponse.person.metadata.sources[0].updateTime || "";
+          personLastUpdated = new Date(personLastUpdatedStr);
+          return personLastUpdated > ssLastUpdated;
+        }
+        return false;
+      });
     });
   }
 
-  function getContactGroup(
-    resourceName: string | null,
+  function getPeopleResponses(
+    contactGroupResponse: Array<ContactGroupResponse> | undefined,
     quotaUser: string
-  ): ContactGroup | undefined {
-    // https://developers.google.com/people/api/rest/v1/contactGroups/get
-    const maxMembers = 1000; // ? this value is arbitrary
+  ): Array<Array<PersonResponse> | undefined> {
+    let actives: Array<PersonResponse> | undefined;
+    let guests: Array<PersonResponse> | undefined;
+    let inactives: Array<PersonResponse> | undefined;
+    let students: Array<PersonResponse> | undefined;
 
-    if (resourceName) {
-      return People.ContactGroups?.get(resourceName, { maxMembers, quotaUser });
-    }
+    contactGroupResponse?.forEach(function (groupResponse) {
+      const resourceNames = groupResponse.contactGroup?.memberResourceNames;
+      const groupName = groupResponse.contactGroup?.name?.toUpperCase();
+      const personFields = [
+        "addresses",
+        "emailAddresses",
+        "metadata",
+        "names",
+        "phoneNumbers",
+      ];
+      let response;
+
+      if (groupName) {
+        // https://developers.google.com/people/api/rest/v1/people/getBatchGet
+        response = People.People?.getBatchGet({
+          resourceNames,
+          personFields,
+          quotaUser,
+        });
+
+        if (response) {
+          switch (groupName) {
+            case "ACTIVE":
+              actives = response.responses;
+              break;
+            case "GUEST":
+              guests = response.responses;
+              break;
+            case "INACTIVE":
+              inactives = response.responses;
+              break;
+            case "STUDENT":
+              students = response.responses;
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    });
+
+    return [actives, guests, inactives, students];
   }
 
-  function checkUpdateNeeded(
-    resourceNameObj: BandResourceNames,
-    ssLastUpdated: GoogleAppsScript.Base.Date,
-    quotaUser: string
-  ): boolean {
-    return Object.keys(resourceNameObj).some(function (key: string) {
-      const resourceName =
-        key === "active"
-          ? resourceNameObj.active
-          : key === "guest"
-          ? resourceNameObj.guest
-          : key === "student"
-          ? resourceNameObj.student
-          : key === "inactive"
-          ? resourceNameObj.inactive
-          : "";
-      const maxMembers = People.ContactGroups!.get(resourceName, {
-        quotaUser,
-      }).memberCount;
-      const contactGroup = People.ContactGroups?.get(resourceName, {
+  function getContactGroups(
+    quotaUser: string,
+    ...resourceNames: Array<string | null>
+  ): Array<ContactGroupResponse> | undefined {
+    const maxMembers = 1000; // ? this value is arbitrary
+    let responseBody;
+
+    if (resourceNames.length > 0) {
+      // https://developers.google.com/people/api/rest/v1/contactGroups/batchGet
+      responseBody = People.ContactGroups?.batchGet({
+        resourceNames,
         maxMembers,
         quotaUser,
       });
-      const resourceNames = contactGroup?.memberResourceNames;
-      const contactsLastUpdated = new Date(
-        contactGroup?.metadata?.updateTime || 0
-      );
+    }
 
-      if (contactsLastUpdated > ssLastUpdated) {
-        return true;
-      }
-
-      return People.People!.getBatchGet({
-        resourceNames,
-        personFields: ["metadata"],
-        quotaUser,
-      }).responses?.some(function (
-        response: GoogleAppsScript.People.Schema.PersonResponse
-      ) {
-        const sources = response.person?.metadata?.sources || [];
-        const personLastUpdatedStr =
-          sources?.length > 0 ? sources[0].updateTime : "";
-        const personLastUpdated = new Date(personLastUpdatedStr || 0);
-
-        return personLastUpdated > ssLastUpdated;
-      });
-    });
+    return responseBody?.responses;
   }
 
+  /**
+   * Function currying a particular sheet with Google Sheet setValues function
+   */
   function addToSheet(sheet: GoogleAppsScript.Spreadsheet.Sheet) {
     return function (
       rowData: Array<Array<string | undefined>>,
@@ -215,86 +239,36 @@ const UpdateContactList = (function () {
       activeSpreadsheet.getId()
     ).getLastUpdated();
     const contactsListSheet = activeSpreadsheet.getSheetByName("Contact List")!;
-    const addToContactsSheet = addToSheet(contactsListSheet);
+    const addToContactsSheet = addToSheet(contactsListSheet); // curried function
     // https://developers.google.com/people/api/rest/v1/contactGroups/list
-    const activeContactGroup = getContactGroup(
+    const contactGroupResponses = getContactGroups(
+      quotaUser,
       scriptProperties.getProperty("RESOURCE_NAME_ACTIVE"),
-      quotaUser
-    );
-    const guestContactGroup = getContactGroup(
       scriptProperties?.getProperty("RESOURCE_NAME_GUEST"),
-      quotaUser
-    );
-    const inactiveContactGroup = getContactGroup(
       scriptProperties?.getProperty("RESOURCE_NAME_INACTIVE"),
+      scriptProperties?.getProperty("RESOURCE_NAME_STUDENT")
+    );
+    const [actives, guests, inactives, students] = getPeopleResponses(
+      contactGroupResponses,
       quotaUser
     );
-    const studentContactGroup = getContactGroup(
-      scriptProperties?.getProperty("RESOURCE_NAME_STUDENT"),
-      quotaUser
+    const updateNeeded = personnelChanges(
+      ssLastUpdated,
+      actives,
+      guests,
+      inactives,
+      students
     );
 
-    if (
-      contactGroupChanges(
-        ssLastUpdated,
-        activeContactGroup?.metadata?.updateTime,
-        guestContactGroup?.metadata?.updateTime,
-        inactiveContactGroup?.metadata?.updateTime,
-        studentContactGroup?.metadata?.updateTime
-      )
-    ) {
-      // update sheet
+    // todo: check these
+    let ssActiveData: Array<Array<string | undefined>> = [];
+    let ssGuestData: Array<Array<string | undefined>> = [];
+    let ssStudentData: Array<Array<string | undefined>> = [];
+    let ssInactiveData: Array<Array<string | undefined>> = [];
+    let rowCount = 2; // row 1 is the header
+
+    if (updateNeeded) {
     }
-
-    // const updateNeeded = checkUpdateNeeded(
-    //   resourceNameObj,
-    //   ssLastUpdated,
-    //   quotaUser
-    // );
-    // let ssActiveData: Array<Array<string | undefined>> = [];
-    // let ssGuestData: Array<Array<string | undefined>> = [];
-    // let ssStudentData: Array<Array<string | undefined>> = [];
-    // let ssInactiveData: Array<Array<string | undefined>> = [];
-    // let rowCount = 2; // row 1 is the header
-    // const dt = new Date();
-
-    // if (updateNeeded) {
-    //   ssActiveData = getContactsList(
-    //     quotaUser,
-    //     resourceNameObj.active,
-    //     "Active"
-    //   );
-    //   ssGuestData = getContactsList(quotaUser, resourceNameObj.guest, "Guest");
-    //   ssStudentData = getContactsList(
-    //     quotaUser,
-    //     resourceNameObj.student,
-    //     "Student"
-    //   );
-    //   ssInactiveData = getContactsList(
-    //     quotaUser,
-    //     resourceNameObj.inactive,
-    //     "Inactive"
-    //   );
-
-    //   if (
-    //     ssActiveData.length > 0 ||
-    //     ssGuestData.length > 0 ||
-    //     ssStudentData.length > 0 ||
-    //     ssInactiveData.length > 0
-    //   ) {
-    //     if (contactsListSheet.getLastRow() > 1) {
-    //       contactsListSheet
-    //         .getRange(2, 1, contactsListSheet.getLastRow() - 1, 7)
-    //         .clearContent();
-    //     }
-
-    //     rowCount = addToContactsSheet(ssActiveData, rowCount);
-    //     rowCount = addToContactsSheet(ssGuestData, rowCount);
-    //     rowCount = addToContactsSheet(ssStudentData, rowCount);
-    //     addToContactsSheet(ssInactiveData, rowCount);
-    //     activeSpreadsheet.rename(`Sutherland Contacts ${dt.getFullYear()}`);
-    //   }
-    // }
 
     return;
   }
