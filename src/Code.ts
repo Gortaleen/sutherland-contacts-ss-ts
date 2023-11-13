@@ -86,6 +86,7 @@ const UpdateContactList = (function () {
         "emailAddresses",
         "metadata",
         "names",
+        "organizations",
         "phoneNumbers",
       ];
       let response;
