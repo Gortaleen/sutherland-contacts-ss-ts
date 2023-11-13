@@ -14,10 +14,8 @@ function updateContactsSheetRun() {
   UpdateContactList.main();
 }
 
-interface ContactGroup extends GoogleAppsScript.People.Schema.ContactGroup {}
 interface ContactGroupResponse
   extends GoogleAppsScript.People.Schema.ContactGroupResponse {}
-interface Person extends GoogleAppsScript.People.Schema.Person {}
 interface PersonResponse
   extends GoogleAppsScript.People.Schema.PersonResponse {}
 
@@ -26,8 +24,36 @@ const UpdateContactList = (function () {
 
   function personnelChanges(
     ssLastUpdated: GoogleAppsScript.Base.Date,
+    scriptProperties: GoogleAppsScript.Properties.Properties,
     ...peopleResponses: Array<Array<PersonResponse> | undefined>
   ): boolean {
+    // first check to see if any contacts have been added or deleted
+    const connectionsSyncToken = scriptProperties.getProperty(
+      "CONNECTIONS_SYNC_TOKEN"
+    );
+    const listConnectionsResponse = People.People?.Connections?.list(
+      "people/me",
+      {
+        personFields: ["names", "metadata"],
+        requestSyncToken: true,
+        syncToken: connectionsSyncToken,
+      }
+    );
+    const totalPeople = listConnectionsResponse?.totalPeople || 0;
+
+    if (listConnectionsResponse?.nextSyncToken) {
+      scriptProperties.setProperty(
+        "CONNECTIONS_SYNC_TOKEN",
+        listConnectionsResponse.nextSyncToken || ""
+      );
+    }
+
+    // contact was either added or deleted
+    if (totalPeople > 0) {
+      return true;
+    }
+
+    // next check for edits to contacts
     return peopleResponses.some(function (peopleResponse) {
       return peopleResponse?.some(function (personResponse) {
         let personLastUpdatedStr;
@@ -116,7 +142,7 @@ const UpdateContactList = (function () {
   }
 
   /**
-   * Function currying a particular sheet with Google Sheet setValues function
+   * Function currying a particular Google Sheet setValues function
    */
   function addToSheet(sheet: GoogleAppsScript.Spreadsheet.Sheet) {
     return function (
@@ -139,39 +165,13 @@ const UpdateContactList = (function () {
     };
   }
 
-  function getContactsList(
-    quotaUser: string,
-    resourceName: string,
-    resourceType: string
+  function getContactsData(
+    resourceType: string,
+    personResponses: Array<PersonResponse> | undefined
   ) {
-    // Advanced People Service
-    // https://developers.google.com/apps-script/advanced/people
-
-    // API
-    // https://developers.google.com/people
-
     let ssData: Array<Array<string | undefined>> = [];
-    // https://developers.google.com/apps-script/advanced/people#reference
-    // https://developers.google.com/people/api/rest/v1/contactGroups/get
-    const maxMembers = People.ContactGroups!.get(resourceName, {
-      quotaUser,
-    }).memberCount;
-    const resourceNames = People.ContactGroups!.get(resourceName, {
-      maxMembers,
-      quotaUser,
-    }).memberResourceNames;
 
-    People.People!.getBatchGet({
-      resourceNames,
-      personFields: [
-        "names",
-        "emailAddresses",
-        "addresses",
-        "phoneNumbers",
-        "organizations",
-      ],
-      quotaUser,
-    }).responses?.forEach(function (response) {
+    personResponses?.forEach(function (response) {
       const person = response.person;
 
       if (person) {
@@ -219,7 +219,6 @@ const UpdateContactList = (function () {
         ];
       }
     });
-
     ssData.sort();
 
     return ssData;
@@ -254,20 +253,38 @@ const UpdateContactList = (function () {
     );
     const updateNeeded = personnelChanges(
       ssLastUpdated,
+      scriptProperties,
       actives,
       guests,
       inactives,
       students
     );
-
-    // todo: check these
-    let ssActiveData: Array<Array<string | undefined>> = [];
-    let ssGuestData: Array<Array<string | undefined>> = [];
-    let ssStudentData: Array<Array<string | undefined>> = [];
-    let ssInactiveData: Array<Array<string | undefined>> = [];
+    let ssActiveData: Array<Array<string | undefined>>;
+    let ssGuestData: Array<Array<string | undefined>>;
+    let ssStudentData: Array<Array<string | undefined>>;
+    let ssInactiveData: Array<Array<string | undefined>>;
     let rowCount = 2; // row 1 is the header
+    const dt = new Date();
 
     if (updateNeeded) {
+      ssActiveData = getContactsData("Active", actives);
+      ssGuestData = getContactsData("Guest", guests);
+      ssStudentData = getContactsData("Inactive", inactives);
+      ssInactiveData = getContactsData("Students", students);
+
+      if (ssActiveData.length > 0) {
+        if (contactsListSheet.getLastRow() > 1) {
+          contactsListSheet
+            .getRange(2, 1, contactsListSheet.getLastRow() - 1, 7)
+            .clearContent();
+        }
+
+        rowCount = addToContactsSheet(ssActiveData, rowCount);
+        rowCount = addToContactsSheet(ssGuestData, rowCount);
+        rowCount = addToContactsSheet(ssStudentData, rowCount);
+        addToContactsSheet(ssInactiveData, rowCount);
+        activeSpreadsheet.rename(`Sutherland Contacts ${dt.getFullYear()}`);
+      }
     }
 
     return;
