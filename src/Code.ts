@@ -11,7 +11,7 @@
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function updateContactsSheetRun() {
-  UpdateContactList.main();
+  UpdateContactList.main("forceUpdate");
 }
 
 interface ContactGroupResponse
@@ -31,6 +31,7 @@ const UpdateContactList = (function () {
     const connectionsSyncToken = scriptProperties.getProperty(
       "CONNECTIONS_SYNC_TOKEN"
     );
+    // https://developers.google.com/people/api/rest/v1/people.connections/list
     const listConnectionsResponse = People.People?.Connections?.list(
       "people/me",
       {
@@ -143,7 +144,7 @@ const UpdateContactList = (function () {
   }
 
   /**
-   * Function currying a particular Google Sheet setValues function
+   * Function currying a particular Google Sheet with the setValues function
    */
   function addToSheet(sheet: GoogleAppsScript.Spreadsheet.Sheet) {
     return function (
@@ -225,7 +226,7 @@ const UpdateContactList = (function () {
     return ssData;
   }
 
-  function main() {
+  function main(forceUpdate = "") {
     // https://support.google.com/googleapi/answer/7035610?hl=en
     const quotaUser = Session.getActiveUser().getEmail();
     const scriptProperties = PropertiesService.getScriptProperties();
@@ -245,21 +246,24 @@ const UpdateContactList = (function () {
       quotaUser,
       scriptProperties.getProperty("RESOURCE_NAME_ACTIVE"),
       scriptProperties?.getProperty("RESOURCE_NAME_GUEST"),
-      scriptProperties?.getProperty("RESOURCE_NAME_INACTIVE"),
-      scriptProperties?.getProperty("RESOURCE_NAME_STUDENT")
+      scriptProperties?.getProperty("RESOURCE_NAME_STUDENT"),
+      scriptProperties?.getProperty("RESOURCE_NAME_INACTIVE")
     );
-    const [actives, guests, inactives, students] = getPeopleResponses(
+    const [actives, guests, students, inactives] = getPeopleResponses(
       contactGroupResponses,
       quotaUser
     );
-    const updateNeeded = personnelChanges(
-      ssLastUpdated,
-      scriptProperties,
-      actives,
-      guests,
-      inactives,
-      students
-    );
+    const updateNeeded =
+      forceUpdate === "forceUpdate"
+        ? true
+        : personnelChanges(
+            ssLastUpdated,
+            scriptProperties,
+            actives,
+            guests,
+            inactives,
+            students
+          );
     let ssActiveData: Array<Array<string | undefined>>;
     let ssGuestData: Array<Array<string | undefined>>;
     let ssStudentData: Array<Array<string | undefined>>;
