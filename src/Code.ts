@@ -22,6 +22,11 @@ interface PersonResponse
 const UpdateContactList = (function () {
   // https://medium.com/@Rahulx1/revealing-module-pattern-tips-e3442d4e352
 
+  /**
+   * Compares the time the band contacts sheet was last updated to the last
+   * updated times of Google Contact groups (labelled as: Active, Guest, ...)
+   * and also the times that indivdual contacts were updated (name, phone, ...).
+   */
   function personnelChanges(
     ssLastUpdated: GoogleAppsScript.Base.Date,
     scriptProperties: GoogleAppsScript.Properties.Properties,
@@ -70,6 +75,9 @@ const UpdateContactList = (function () {
     });
   }
 
+  /**
+   * Gets contacts' data (e.g. name, phone, ...) from Google Contacts app.
+   */
   function getPeopleResponses(
     contactGroupResponse: Array<ContactGroupResponse> | undefined,
     quotaUser: string
@@ -124,6 +132,9 @@ const UpdateContactList = (function () {
     return [actives, guests, inactives, students];
   }
 
+  /**
+   * Gets Google Contacts organized by labels (e.g., Active, Guest, ...)
+   */
   function getContactGroups(
     quotaUser: string,
     ...resourceNames: Array<string | null>
@@ -167,6 +178,10 @@ const UpdateContactList = (function () {
     };
   }
 
+  /**
+   * Formats contacts' data (e.g., name, phone, ...) into rows to be filed to a
+   * Google spreadsheet.
+   */
   function getContactsData(
     resourceType: string,
     personResponses: Array<PersonResponse> | undefined
