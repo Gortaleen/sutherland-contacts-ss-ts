@@ -9,8 +9,15 @@
  * https://typescript-eslint.io/getting-started
  */
 
+// todo: send email to secretary@sutherlandpipeband.org when sheet updated
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function updateContactsSheetRun() {
+  UpdateContactList.main();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function updateContactsSheetForceUpdate() {
   UpdateContactList.main("forceUpdate");
 }
 
@@ -36,16 +43,41 @@ const UpdateContactList = (function () {
     const connectionsSyncToken = scriptProperties.getProperty(
       "CONNECTIONS_SYNC_TOKEN"
     );
-    // https://developers.google.com/people/api/rest/v1/people.connections/list
-    const listConnectionsResponse = People.People?.Connections?.list(
-      "people/me",
-      {
+    let listConnectionsResponse:
+      | GoogleAppsScript.People.Schema.ListConnectionsResponse
+      | undefined;
+    let totalPeople = 0;
+
+    try {
+      // try is used here as a workaround to refresh the syncToken.
+      // syncTokens expire after seven days if there are no changes to the
+      // contacts list.
+      // https://developers.google.com/people/api/rest/v1/people.connections/list#google.people.v1.PeopleService.ListConnections
+
+      // https://developers.google.com/people/api/rest/v1/people.connections/list
+      listConnectionsResponse = People.People?.Connections?.list("people/me", {
         personFields: ["names", "metadata"],
         requestSyncToken: true,
         syncToken: connectionsSyncToken,
+      });
+    } catch (err) {
+      if (
+        (err as Error).message ===
+        "Sync token is expired. Clear local cache and retry call without the sync token."
+      ) {
+        // https://developers.google.com/people/api/rest/v1/people.connections/list
+        listConnectionsResponse = People.People?.Connections?.list(
+          "people/me",
+          {
+            personFields: ["names", "metadata"],
+            requestSyncToken: true,
+            syncToken: "",
+          }
+        );
       }
-    );
-    const totalPeople = listConnectionsResponse?.totalPeople || 0;
+    }
+
+    totalPeople = listConnectionsResponse?.totalPeople || 0;
 
     if (listConnectionsResponse?.nextSyncToken) {
       scriptProperties.setProperty(
