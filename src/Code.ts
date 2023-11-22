@@ -9,8 +9,15 @@
  * https://typescript-eslint.io/getting-started
  */
 
+// todo: send email to secretary@sutherlandpipeband.org when sheet updated
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function updateContactsSheetRun() {
+  UpdateContactList.main();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function updateContactsSheetForceUpdate() {
   UpdateContactList.main("forceUpdate");
 }
 
@@ -22,6 +29,11 @@ interface PersonResponse
 const UpdateContactList = (function () {
   // https://medium.com/@Rahulx1/revealing-module-pattern-tips-e3442d4e352
 
+  /**
+   * Compares the time the band contacts sheet was last updated to the last
+   * updated times of Google Contact groups (labelled as: Active, Guest, ...)
+   * and also the times that indivdual contacts were updated (name, phone, ...).
+   */
   function personnelChanges(
     ssLastUpdated: GoogleAppsScript.Base.Date,
     scriptProperties: GoogleAppsScript.Properties.Properties,
@@ -31,16 +43,41 @@ const UpdateContactList = (function () {
     const connectionsSyncToken = scriptProperties.getProperty(
       "CONNECTIONS_SYNC_TOKEN"
     );
-    // https://developers.google.com/people/api/rest/v1/people.connections/list
-    const listConnectionsResponse = People.People?.Connections?.list(
-      "people/me",
-      {
+    let listConnectionsResponse:
+      | GoogleAppsScript.People.Schema.ListConnectionsResponse
+      | undefined;
+    let totalPeople = 0;
+
+    try {
+      // try is used here as a workaround to refresh the syncToken.
+      // syncTokens expire after seven days if there are no changes to the
+      // contacts list.
+      // https://developers.google.com/people/api/rest/v1/people.connections/list#google.people.v1.PeopleService.ListConnections
+
+      // https://developers.google.com/people/api/rest/v1/people.connections/list
+      listConnectionsResponse = People.People?.Connections?.list("people/me", {
         personFields: ["names", "metadata"],
         requestSyncToken: true,
         syncToken: connectionsSyncToken,
+      });
+    } catch (err) {
+      if (
+        (err as Error).message ===
+        "Sync token is expired. Clear local cache and retry call without the sync token."
+      ) {
+        // https://developers.google.com/people/api/rest/v1/people.connections/list
+        listConnectionsResponse = People.People?.Connections?.list(
+          "people/me",
+          {
+            personFields: ["names", "metadata"],
+            requestSyncToken: true,
+            syncToken: "",
+          }
+        );
       }
-    );
-    const totalPeople = listConnectionsResponse?.totalPeople || 0;
+    }
+
+    totalPeople = listConnectionsResponse?.totalPeople || 0;
 
     if (listConnectionsResponse?.nextSyncToken) {
       scriptProperties.setProperty(
@@ -70,6 +107,9 @@ const UpdateContactList = (function () {
     });
   }
 
+  /**
+   * Gets contacts' data (e.g. name, phone, ...) from Google Contacts app.
+   */
   function getPeopleResponses(
     contactGroupResponse: Array<ContactGroupResponse> | undefined,
     quotaUser: string
@@ -124,6 +164,9 @@ const UpdateContactList = (function () {
     return [actives, guests, inactives, students];
   }
 
+  /**
+   * Gets Google Contacts organized by labels (e.g., Active, Guest, ...)
+   */
   function getContactGroups(
     quotaUser: string,
     ...resourceNames: Array<string | null>
@@ -167,6 +210,10 @@ const UpdateContactList = (function () {
     };
   }
 
+  /**
+   * Formats contacts' data (e.g., name, phone, ...) into rows to be filed to a
+   * Google spreadsheet.
+   */
   function getContactsData(
     resourceType: string,
     personResponses: Array<PersonResponse> | undefined
