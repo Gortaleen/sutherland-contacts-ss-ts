@@ -49,9 +49,10 @@ const UpdateContactList = (function () {
     let totalPeople = 0;
 
     try {
-      // try is used here as a workaround to refresh the syncToken.
+      // try...catch is used here as a workaround to refresh the syncToken.
       // syncTokens expire after seven days if there are no changes to the
-      // contacts list.
+      // contacts list.  An error is thrown by the list function when it is
+      // called with an expired syncToken:
       // https://developers.google.com/people/api/rest/v1/people.connections/list#google.people.v1.PeopleService.ListConnections
 
       // https://developers.google.com/people/api/rest/v1/people.connections/list
@@ -63,7 +64,7 @@ const UpdateContactList = (function () {
     } catch (err) {
       if (
         (err as Error).message ===
-        "Sync token is expired. Clear local cache and retry call without the sync token."
+        "API call to people.people.connections.list failed with error: Sync token is expired. Clear local cache and retry call without the sync token."
       ) {
         // https://developers.google.com/people/api/rest/v1/people.connections/list
         listConnectionsResponse = People.People?.Connections?.list(
@@ -74,6 +75,8 @@ const UpdateContactList = (function () {
             syncToken: "",
           }
         );
+      } else {
+        throw err;
       }
     }
 
